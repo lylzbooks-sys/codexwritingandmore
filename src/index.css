@@ -13,3 +13,49 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background-color: #0c0a09;
 }
+
+/* Editor placeholder */
+[contenteditable]:empty:before {
+  content: attr(data-placeholder);
+  color: #57534e;
+  pointer-events: none;
+}
+
+/* Prose overrides for dark theme */
+.prose-invert {
+  --tw-prose-body: #d6d3d1;
+  --tw-prose-headings: #ffffff;
+  --tw-prose-lead: #a8a29e;
+  --tw-prose-links: #f59e0b;
+  --tw-prose-bold: #ffffff;
+  --tw-prose-counters: #78716c;
+  --tw-prose-bullets: #57534e;
+  --tw-prose-hr: #292524;
+  --tw-prose-quotes: #ffffff;
+  --tw-prose-quote-borders: #f59e0b;
+  --tw-prose-captions: #78716c;
+  --tw-prose-code: #f59e0b;
+  --tw-prose-pre-code: #d6d3d1;
+  --tw-prose-pre-borders: #292524;
+  --tw-prose-th-borders: #44403c;
+  --tw-prose-td-borders: #292524;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #44403c;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #57534e;
+}
