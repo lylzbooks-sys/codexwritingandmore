@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, Link } from 'react-router-dom';
 import {
   Feather, BookOpen, LogOut, PenLine, BookMarked,
   BarChart2, Settings, Users, TrendingUp, Plus,
   ChevronRight, ChevronDown, FileText, MoreHorizontal,
   PanelRightClose, PanelRight, Users as UsersIcon, MapPin, ScrollText,
-  GripVertical, Trash2, Edit3, Menu
+  GripVertical, Trash2, Edit3, Menu, Home, Eye
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -34,11 +34,11 @@ const mockChapters: Chapter[] = [
 ];
 
 const navItems = [
-  { icon: PenLine, label: 'Write', active: true },
-  { icon: BookMarked, label: 'My Stories' },
-  { icon: BarChart2, label: 'Analytics' },
-  { icon: Users, label: 'Community' },
-  { icon: Settings, label: 'Settings' },
+  { icon: Home, label: 'Home', to: '/' },
+  { icon: PenLine, label: 'Write', to: '/dashboard/writer' },
+  { icon: Eye, label: 'Create Art', to: '/dashboard/artist' },
+  { icon: BookMarked, label: 'Reading List', to: '/dashboard/reader' },
+  { icon: Settings, label: 'Settings', to: '#' },
 ];
 
 const bibleTabs = [
@@ -108,20 +108,25 @@ export default function WriterDashboard() {
     <div className="min-h-screen bg-stone-950 text-white flex overflow-hidden">
       {/* Left Navigation Rail */}
       <aside className="hidden md:flex w-16 bg-stone-900 border-r border-stone-800 flex-col items-center py-6 gap-2">
-        <div className="mb-4">
+        <NavLink to="/" className="mb-4 hover:opacity-80 transition-opacity" title="Home">
           <BookOpen className="w-6 h-6 text-amber-500" />
-        </div>
+        </NavLink>
         <div className="flex-1 flex flex-col gap-1">
-          {navItems.map((item, i) => (
-            <button
-              key={item.label}
-              className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
-                i === 0 ? 'bg-amber-500/10 text-amber-400' : 'text-stone-500 hover:text-white hover:bg-stone-800'
-              }`}
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
               title={item.label}
+              className={({ isActive }) =>
+                `w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
+                  isActive && item.to !== '#'
+                    ? 'bg-amber-500/10 text-amber-400'
+                    : 'text-stone-500 hover:text-white hover:bg-stone-800'
+                }`
+              }
             >
               <item.icon className="w-5 h-5" />
-            </button>
+            </NavLink>
           ))}
         </div>
         <button
@@ -139,7 +144,9 @@ export default function WriterDashboard() {
           <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-stone-400">
             <Menu className="w-5 h-5" />
           </button>
-          <BookOpen className="w-5 h-5 text-amber-500" />
+          <Link to="/" className="text-stone-400 hover:text-white transition-colors">
+            <BookOpen className="w-5 h-5 text-amber-500" />
+          </Link>
         </div>
         <h1 className="text-sm font-semibold tracking-wide">The Writer's Engine</h1>
         <button onClick={async () => { await signOut(); navigate('/'); }} className="text-stone-400">
@@ -428,13 +435,21 @@ export default function WriterDashboard() {
         <div className="md:hidden fixed inset-0 z-50 bg-stone-950/95 flex flex-col pt-14">
           <div className="flex-1 p-6 space-y-4">
             {navItems.map((item) => (
-              <button
-                key={item.label}
-                className="w-full flex items-center gap-3 px-4 py-3 text-stone-400 hover:text-white hover:bg-stone-800 rounded-xl transition-colors"
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={() => setMobileMenuOpen(false)}
+                className={({ isActive }) =>
+                  `w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+                    isActive && item.to !== '#'
+                      ? 'bg-amber-500/10 text-amber-400'
+                      : 'text-stone-400 hover:text-white hover:bg-stone-800'
+                  }`
+                }
               >
                 <item.icon className="w-5 h-5" />
                 <span className="text-sm font-medium">{item.label}</span>
-              </button>
+              </NavLink>
             ))}
           </div>
           <button
