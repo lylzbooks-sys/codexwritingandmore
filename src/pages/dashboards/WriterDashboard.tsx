@@ -57,6 +57,8 @@ export default function WriterDashboard() {
   const [saving, setSaving] = useState(false);
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [showSaveIndicator, setShowSaveIndicator] = useState(false);
 
   // Fetch documents on mount
   useEffect(() => {
@@ -64,6 +66,32 @@ export default function WriterDashboard() {
       fetchDocuments();
     }
   }, [user]);
+
+  // Keyboard shortcut for save
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (activeDocument && !saving) {
+          saveDocument();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeDocument, saving, editorContent, editorTitle]);
+
+  // Auto-hide save indicator after 2 seconds
+  useEffect(() => {
+    if (saveStatus === 'saved' && showSaveIndicator) {
+      const timer = setTimeout(() => {
+        setShowSaveIndicator(false);
+        setSaveStatus('idle');
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [saveStatus, showSaveIndicator]);
 
   const fetchDocuments = async () => {
     setLoading(true);
@@ -123,6 +151,9 @@ export default function WriterDashboard() {
     if (!activeDocument) return;
 
     setSaving(true);
+    setSaveStatus('saving');
+    setShowSaveIndicator(true);
+
     const { error } = await supabase
       .from('binder_items')
       .update({
@@ -139,6 +170,9 @@ export default function WriterDashboard() {
           : d
       ));
       setActiveDocument({ ...activeDocument, title: editorTitle, content: editorContent });
+      setSaveStatus('saved');
+    } else {
+      setSaveStatus('idle');
     }
     setSaving(false);
   };
@@ -393,11 +427,11 @@ export default function WriterDashboard() {
         {/* Editor Canvas */}
         <div className="flex-1 overflow-y-auto">
           {activeDocument ? (
-            <div className="max-w-3xl mx-auto px-8 py-12">
+            <div className="w-full h-full flex flex-col">
               <textarea
                 value={editorContent}
                 onChange={(e) => setEditorContent(e.target.value)}
-                className="w-full min-h-[60vh] bg-transparent border-none outline-none resize-none text-stone-300 leading-relaxed prose-invert"
+                className="editor-textarea flex-1 focus:outline-none"
                 placeholder="Begin your story here... The cursor blinks, waiting for your first words."
               />
             </div>
@@ -418,22 +452,39 @@ export default function WriterDashboard() {
         </div>
 
         {/* Editor Footer */}
-        <div className="flex items-center justify-between px-6 py-3 border-t border-stone-800 bg-stone-900/30">
-          <div className="flex items-center gap-4 text-xs text-stone-500">
-            {activeDocument && (
-              <>
-                <span>Last saved: {new Date(activeDocument.updated_at).toLocaleString()}</span>
-              </>
+        <div className="flex items-center justify-between px-6 py-4 border-t border-stone-800 bg-stone-900/30 gap-4">
+          <div className="flex items-center gap-3 text-xs">
+            {showSaveIndicator && (
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-medium transition-all save-status-enter ${
+                saveStatus === 'saving'
+                  ? 'text-amber-400 bg-amber-500/10 border border-amber-500/30'
+                  : 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/30'
+              }`}>
+                {saveStatus === 'saving' ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>✓</span>
+                    <span>Saved</span>
+                  </>
+                )}
+              </div>
+            )}
+            {activeDocument && !showSaveIndicator && (
+              <span className="text-stone-600">
+                Last saved: {new Date(activeDocument.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button className="text-stone-500 hover:text-white text-xs px-3 py-1.5 rounded hover:bg-stone-800 transition-colors">
-              Preview
-            </button>
+            <span className="text-xs text-stone-600 hidden sm:inline">Cmd+S to save</span>
             <button
               onClick={saveDocument}
               disabled={!activeDocument || saving}
-              className={`flex items-center gap-2 text-xs font-semibold px-4 py-1.5 rounded transition-colors ${
+              className={`flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-lg transition-colors ${
                 !activeDocument || saving
                   ? 'bg-stone-700 text-stone-500 cursor-not-allowed'
                   : 'bg-amber-500 hover:bg-amber-400 text-stone-950'

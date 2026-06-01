@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Lora:ital,wght@0,400;0,600;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Lora:ital,wght@0,400;0,600;1,400&family=Merriweather:ital,wght@0,300;0,400;0,700;1,400&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -58,4 +58,56 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #57534e;
+}
+
+/* Writer's distraction-free editor */
+.editor-textarea {
+  font-family: 'Merriweather', Georgia, serif;
+  font-size: 16px;
+  line-height: 1.8;
+  color: #d6d3d1;
+  max-width: 750px;
+  margin: 0 auto;
+  padding: 3rem 2rem;
+  resize: none;
+  background: transparent;
+  border: none;
+  outline: none;
+  letter-spacing: 0.3px;
+}
+
+.editor-textarea::placeholder {
+  color: #78716c;
+  opacity: 0.6;
+}
+
+.editor-textarea:focus {
+  outline: none;
+}
+
+/* Smooth save status animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.save-status-enter {
+  animation: fadeIn 0.2s ease-in-out forwards;
+}
+
+.save-status-exit {
+  animation: fadeOut 0.3s ease-in-out forwards;
 }
