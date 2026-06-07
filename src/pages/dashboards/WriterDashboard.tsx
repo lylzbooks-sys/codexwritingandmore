@@ -5,10 +5,46 @@ import {
   Settings, Plus,
   ChevronRight, ChevronDown, FileText,
   PanelRightClose, PanelRight, Users as UsersIcon, MapPin, ScrollText,
-  Trash2, Edit3, Menu, Home, Eye, Loader2, Save, LayoutGrid, X
+  Trash2, Edit3, Menu, Home, Eye, Loader2, Save, LayoutGrid, X, RotateCcw
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase, BinderItem, StoryElement, StoryElementCategory } from '../../lib/supabase';
+
+const DRAFT_KEY = 'codex_draft_';
+
+function getDraftKey(docId: string) {
+  return `${DRAFT_KEY}${docId}`;
+}
+
+interface SavedDraft {
+  docId: string;
+  title: string;
+  content: string;
+  savedAt: string;
+}
+
+function saveDraft(docId: string, title: string, content: string) {
+  const draft: SavedDraft = { docId, title, content, savedAt: new Date().toISOString() };
+  try {
+    localStorage.setItem(getDraftKey(docId), JSON.stringify(draft));
+  } catch { /* quota exceeded or private mode */ }
+}
+
+function loadDraft(docId: string): SavedDraft | null {
+  try {
+    const raw = localStorage.getItem(getDraftKey(docId));
+    if (!raw) return null;
+    return JSON.parse(raw) as SavedDraft;
+  } catch {
+    return null;
+  }
+}
+
+function clearDraft(docId: string) {
+  try {
+    localStorage.removeItem(getDraftKey(docId));
+  } catch { /* ignore */ }
+}
 
 const navItems = [
   { icon: Home, label: 'Home', to: '/' },
@@ -160,6 +196,10 @@ export default function WriterDashboard() {
   const latestContentRef = useRef(editorContent);
   const latestTitleRef = useRef(editorTitle);
 
+  // Session recovery state
+  const [recoveryDraft, setRecoveryDraft] = useState<SavedDraft | null>(null);
+  const [showRecoveryBanner, setShowRecoveryBanner] = useState(false);
+
   // Story Bible state
   const [storyElements, setStoryElements] = useState<StoryElement[]>([]);
   const [bibleLoading, setBibleLoading] = useState(false);
@@ -224,6 +264,38 @@ export default function WriterDashboard() {
       return () => clearTimeout(timer);
     }
   }, [saveStatus, showSaveIndicator]);
+
+  // Save to localStorage whenever content changes (before DB save)
+  useEffect(() => {
+    if (activeDocument && (editorContent !== activeDocument.content || editorTitle !== activeDocument.title)) {
+      saveDraft(activeDocument.id, editorTitle, editorContent);
+    }
+  }, [editorContent, editorTitle, activeDocument]);
+
+  // On successful DB save, clear localStorage draft
+  useEffect(() => {
+    if (saveStatus === 'saved' && activeDocument) {
+      clearDraft(activeDocument.id);
+    }
+  }, [saveStatus, activeDocument]);
+
+  // Check for recoverable draft when activeDocument changes
+  useEffect(() => {
+    if (!activeDocument) {
+      setShowRecoveryBanner(false);
+      setRecoveryDraft(null);
+      return;
+    }
+
+    const draft = loadDraft(activeDocument.id);
+    if (draft && (draft.content !== activeDocument.content || draft.title !== activeDocument.title)) {
+      setRecoveryDraft(draft);
+      setShowRecoveryBanner(true);
+    } else {
+      setRecoveryDraft(null);
+      setShowRecoveryBanner(false);
+    }
+  }, [activeDocument?.id]);
 
   const fetchDocuments = async () => {
     setLoading(true);
@@ -373,6 +445,20 @@ export default function WriterDashboard() {
   const wordCount = editorContent.trim() ? editorContent.trim().split(/\s+/).length : 0;
 
   const filteredElements = storyElements.filter(el => el.category === activeTab);
+
+  const handleRestoreDraft = () => {
+    if (!recoveryDraft) return;
+    setEditorContent(recoveryDraft.content);
+    setEditorTitle(recoveryDraft.title);
+    setShowRecoveryBanner(false);
+    setRecoveryDraft(null);
+  };
+
+  const handleDismissRecovery = () => {
+    if (activeDocument) clearDraft(activeDocument.id);
+    setShowRecoveryBanner(false);
+    setRecoveryDraft(null);
+  };
 
   return (
     <div className="min-h-screen bg-stone-950 text-white flex overflow-hidden">
@@ -556,6 +642,36 @@ export default function WriterDashboard() {
         </div>
 
         <div className="flex-1 overflow-y-auto">
+          {/* Session Recovery Banner */}
+          {showRecoveryBanner && recoveryDraft && activeDocument && (
+            <div className="bg-amber-500/10 border-b border-amber-500/30 px-6 py-3 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <RotateCcw className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs text-amber-300 font-medium">Unsaved draft recovered</p>
+                  <p className="text-xs text-stone-500">
+                    Last edited {new Date(recoveryDraft.savedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={handleRestoreDraft}
+                  className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Restore
+                </button>
+                <button
+                  onClick={handleDismissRecovery}
+                  className="text-xs text-stone-400 hover:text-white px-2 py-1.5 transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+
           {activeDocument ? (
             <div className="w-full h-full flex flex-col">
               <textarea
