@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { NavLink, useNavigate, Link } from 'react-router-dom';
 import {
   BookOpen, LogOut, PenLine, BookMarked,
@@ -156,6 +156,9 @@ export default function WriterDashboard() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [showSaveIndicator, setShowSaveIndicator] = useState(false);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestContentRef = useRef(editorContent);
+  const latestTitleRef = useRef(editorTitle);
 
   // Story Bible state
   const [storyElements, setStoryElements] = useState<StoryElement[]>([]);
@@ -178,6 +181,7 @@ export default function WriterDashboard() {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
         if (activeDocument && !saving) {
+          if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
           saveDocument();
         }
       }
@@ -185,6 +189,30 @@ export default function WriterDashboard() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeDocument, saving, editorContent, editorTitle]);
+
+  // Auto-save after 1.5s of inactivity
+  useEffect(() => {
+    latestContentRef.current = editorContent;
+    latestTitleRef.current = editorTitle;
+
+    if (!activeDocument || saving) return;
+
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+
+    autoSaveTimerRef.current = setTimeout(() => {
+      if (
+        activeDocument &&
+        (latestContentRef.current !== activeDocument.content ||
+          latestTitleRef.current !== activeDocument.title)
+      ) {
+        saveDocument();
+      }
+    }, 1500);
+
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [editorContent, editorTitle, activeDocument, saving]);
 
   // Auto-hide save indicator
   useEffect(() => {
