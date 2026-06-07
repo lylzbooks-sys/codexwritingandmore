@@ -1,14 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, useNavigate, Link } from 'react-router-dom';
 import {
   BookOpen, LogOut, PenLine, BookMarked,
   Settings, Plus,
-  ChevronRight, ChevronDown, FileText, MoreHorizontal,
+  ChevronRight, ChevronDown, FileText,
   PanelRightClose, PanelRight, Users as UsersIcon, MapPin, ScrollText,
-  GripVertical, Trash2, Edit3, Menu, Home, Eye, Loader2, Save, LayoutGrid
+  Trash2, Edit3, Menu, Home, Eye, Loader2, Save, LayoutGrid, X
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { supabase, BinderItem } from '../../lib/supabase';
+import { supabase, BinderItem, StoryElement, StoryElementCategory } from '../../lib/supabase';
 
 const navItems = [
   { icon: Home, label: 'Home', to: '/' },
@@ -19,29 +19,125 @@ const navItems = [
   { icon: Settings, label: 'Settings', to: '#' },
 ];
 
-const bibleTabs = [
-  { id: 'characters', label: 'Characters', icon: UsersIcon },
-  { id: 'locations', label: 'Locations', icon: MapPin },
-  { id: 'rules', label: 'World Rules', icon: ScrollText },
+const bibleTabs: { id: StoryElementCategory; label: string; icon: typeof UsersIcon }[] = [
+  { id: 'character', label: 'Characters', icon: UsersIcon },
+  { id: 'location', label: 'Locations', icon: MapPin },
+  { id: 'rule', label: 'World Rules', icon: ScrollText },
 ];
 
-const mockCharacters = [
-  { id: '1', name: 'Elena Vance', role: 'Protagonist', color: 'bg-amber-500' },
-  { id: '2', name: 'Marcus Cole', role: 'Mentor', color: 'bg-sky-500' },
-  { id: '3', name: 'The Shadow', role: 'Antagonist', color: 'bg-rose-500' },
-];
+const characterColors = ['bg-amber-500', 'bg-sky-500', 'bg-rose-500', 'bg-emerald-500', 'bg-violet-500', 'bg-orange-500'];
 
-const mockLocations = [
-  { id: '1', name: 'Thornwood Village', type: 'Settlement' },
-  { id: '2', name: 'The Whispering Forest', type: 'Wilderness' },
-  { id: '3', name: 'Castle Blackmoor', type: 'Stronghold' },
-];
+interface AddElementModalProps {
+  category: StoryElementCategory;
+  onClose: () => void;
+  onSave: (data: { name: string; description: string; metadata: Record<string, string> }) => void;
+  saving: boolean;
+}
 
-const mockRules = [
-  { id: '1', rule: 'Magic requires a cost — always.' },
-  { id: '2', rule: 'The dead do not return unchanged.' },
-  { id: '3', rule: 'Shadows remember what light forgets.' },
-];
+function AddElementModal({ category, onClose, onSave, saving }: AddElementModalProps) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [metaField, setMetaField] = useState('');
+
+  const categoryLabel = category === 'character' ? 'Character' : category === 'location' ? 'Location' : 'Rule';
+  const metaLabel = category === 'character' ? 'Role' : category === 'location' ? 'Type' : '';
+  const metaPlaceholder = category === 'character' ? 'e.g. Protagonist, Mentor' : category === 'location' ? 'e.g. Settlement, Wilderness' : '';
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    const metadata: Record<string, string> = {};
+    if (metaField.trim()) {
+      const key = category === 'character' ? 'role' : 'type';
+      metadata[key] = metaField.trim();
+    }
+    onSave({ name: name.trim(), description: description.trim(), metadata });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="bg-stone-900 border border-stone-700 rounded-2xl w-full max-w-md mx-4 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-5 border-b border-stone-800">
+          <h3 className="text-sm font-semibold">Add {categoryLabel}</h3>
+          <button onClick={onClose} className="text-stone-500 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs text-stone-400 mb-1.5">
+              {category === 'rule' ? 'Rule' : 'Name'}
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={category === 'rule' ? 'e.g. Magic requires a cost' : category === 'character' ? 'e.g. Elena Vance' : 'e.g. Thornwood Village'}
+              className="w-full bg-stone-800 border border-stone-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-stone-600 outline-none focus:border-amber-500/50 transition-colors"
+              autoFocus
+            />
+          </div>
+
+          {metaLabel && (
+            <div>
+              <label className="block text-xs text-stone-400 mb-1.5">{metaLabel}</label>
+              <input
+                type="text"
+                value={metaField}
+                onChange={(e) => setMetaField(e.target.value)}
+                placeholder={metaPlaceholder}
+                className="w-full bg-stone-800 border border-stone-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-stone-600 outline-none focus:border-amber-500/50 transition-colors"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs text-stone-400 mb-1.5">Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder={
+                category === 'character'
+                  ? 'Physical description, personality, backstory...'
+                  : category === 'location'
+                  ? 'Appearance, atmosphere, key features...'
+                  : 'Details and implications of this rule...'
+              }
+              rows={3}
+              className="w-full bg-stone-800 border border-stone-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-stone-600 outline-none focus:border-amber-500/50 transition-colors resize-none"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-medium text-stone-400 hover:text-white bg-stone-800 hover:bg-stone-700 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!name.trim() || saving}
+              className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-colors ${
+                !name.trim() || saving
+                  ? 'bg-stone-700 text-stone-500 cursor-not-allowed'
+                  : 'bg-amber-500 hover:bg-amber-400 text-stone-950'
+              }`}
+            >
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+              Add {categoryLabel}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 export default function WriterDashboard() {
   const { user, signOut } = useAuth();
@@ -51,7 +147,7 @@ export default function WriterDashboard() {
   const [editorContent, setEditorContent] = useState('');
   const [editorTitle, setEditorTitle] = useState('');
   const [bibleOpen, setBibleOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState('characters');
+  const [activeTab, setActiveTab] = useState<StoryElementCategory>('character');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -61,10 +157,18 @@ export default function WriterDashboard() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [showSaveIndicator, setShowSaveIndicator] = useState(false);
 
+  // Story Bible state
+  const [storyElements, setStoryElements] = useState<StoryElement[]>([]);
+  const [bibleLoading, setBibleLoading] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [elementSaving, setElementSaving] = useState(false);
+  const [deleteElementConfirm, setDeleteElementConfirm] = useState<string | null>(null);
+
   // Fetch documents on mount
   useEffect(() => {
     if (user) {
       fetchDocuments();
+      fetchStoryElements();
     }
   }, [user]);
 
@@ -78,12 +182,11 @@ export default function WriterDashboard() {
         }
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeDocument, saving, editorContent, editorTitle]);
 
-  // Auto-hide save indicator after 2 seconds
+  // Auto-hide save indicator
   useEffect(() => {
     if (saveStatus === 'saved' && showSaveIndicator) {
       const timer = setTimeout(() => {
@@ -104,7 +207,6 @@ export default function WriterDashboard() {
 
     if (!error && data) {
       setDocuments(data);
-      // Auto-select first document if none selected
       if (data.length > 0 && !activeDocument) {
         setActiveDocument(data[0]);
         setEditorContent(data[0].content || '');
@@ -114,20 +216,28 @@ export default function WriterDashboard() {
     setLoading(false);
   };
 
-  // Add new chapter
+  const fetchStoryElements = async () => {
+    setBibleLoading(true);
+    const { data, error } = await supabase
+      .from('story_elements')
+      .select('*')
+      .eq('user_id', user?.id)
+      .order('created_at', { ascending: true });
+
+    if (!error && data) {
+      setStoryElements(data);
+    }
+    setBibleLoading(false);
+  };
+
   const addChapter = async () => {
-    const newDocNumber = documents.length + 1;
     const title = documents.length === 0
       ? 'Untitled Document'
       : `Chapter ${documents.filter(d => d.title.startsWith('Chapter')).length + 1}`;
 
     const { data, error } = await supabase
       .from('binder_items')
-      .insert({
-        user_id: user?.id,
-        title,
-        content: '',
-      })
+      .insert({ user_id: user?.id, title, content: '' })
       .select()
       .single();
 
@@ -140,35 +250,26 @@ export default function WriterDashboard() {
     }
   };
 
-  // Select document
   const selectDocument = (doc: BinderItem) => {
     setActiveDocument(doc);
     setEditorContent(doc.content || '');
     setEditorTitle(doc.title);
   };
 
-  // Save document
   const saveDocument = async () => {
     if (!activeDocument) return;
-
     setSaving(true);
     setSaveStatus('saving');
     setShowSaveIndicator(true);
 
     const { error } = await supabase
       .from('binder_items')
-      .update({
-        title: editorTitle,
-        content: editorContent,
-      })
+      .update({ title: editorTitle, content: editorContent })
       .eq('id', activeDocument.id);
 
     if (!error) {
-      // Update local state
       setDocuments(documents.map(d =>
-        d.id === activeDocument.id
-          ? { ...d, title: editorTitle, content: editorContent }
-          : d
+        d.id === activeDocument.id ? { ...d, title: editorTitle, content: editorContent } : d
       ));
       setActiveDocument({ ...activeDocument, title: editorTitle, content: editorContent });
       setSaveStatus('saved');
@@ -178,7 +279,6 @@ export default function WriterDashboard() {
     setSaving(false);
   };
 
-  // Delete document
   const deleteDocument = async (docId: string) => {
     const { error } = await supabase
       .from('binder_items')
@@ -189,8 +289,6 @@ export default function WriterDashboard() {
       const updatedDocs = documents.filter(d => d.id !== docId);
       setDocuments(updatedDocs);
       setDeleteConfirm(null);
-
-      // Select another document if the deleted one was active
       if (activeDocument?.id === docId) {
         if (updatedDocs.length > 0) {
           selectDocument(updatedDocs[0]);
@@ -203,19 +301,50 @@ export default function WriterDashboard() {
     }
   };
 
-  // Toggle document expansion
+  // Story element CRUD
+  const addStoryElement = async (data: { name: string; description: string; metadata: Record<string, string> }) => {
+    setElementSaving(true);
+    const { data: newEl, error } = await supabase
+      .from('story_elements')
+      .insert({
+        user_id: user?.id,
+        category: activeTab,
+        name: data.name,
+        description: data.description,
+        metadata: data.metadata,
+      })
+      .select()
+      .single();
+
+    if (!error && newEl) {
+      setStoryElements([...storyElements, newEl]);
+      setModalOpen(false);
+    }
+    setElementSaving(false);
+  };
+
+  const deleteStoryElement = async (id: string) => {
+    const { error } = await supabase
+      .from('story_elements')
+      .delete()
+      .eq('id', id);
+
+    if (!error) {
+      setStoryElements(storyElements.filter(el => el.id !== id));
+      setDeleteElementConfirm(null);
+    }
+  };
+
   const toggleExpand = (docId: string) => {
     const newExpanded = new Set(expandedDocs);
-    if (newExpanded.has(docId)) {
-      newExpanded.delete(docId);
-    } else {
-      newExpanded.add(docId);
-    }
+    if (newExpanded.has(docId)) newExpanded.delete(docId);
+    else newExpanded.add(docId);
     setExpandedDocs(newExpanded);
   };
 
-  // Calculate word count
   const wordCount = editorContent.trim() ? editorContent.trim().split(/\s+/).length : 0;
+
+  const filteredElements = storyElements.filter(el => el.category === activeTab);
 
   return (
     <div className="min-h-screen bg-stone-950 text-white flex overflow-hidden">
@@ -285,10 +414,7 @@ export default function WriterDashboard() {
                   <p className="text-xs text-stone-500">{documents.length} document{documents.length !== 1 ? 's' : ''}</p>
                 </div>
               </div>
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="text-stone-500 hover:text-white transition-colors"
-              >
+              <button onClick={() => setSidebarOpen(false)} className="text-stone-500 hover:text-white transition-colors">
                 <PanelRightClose className="w-4 h-4" />
               </button>
             </div>
@@ -307,12 +433,9 @@ export default function WriterDashboard() {
               ) : (
                 documents.map((doc) => (
                   <div key={doc.id} className="select-none">
-                    {/* Document Header */}
                     <div
                       className={`group flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
-                        activeDocument?.id === doc.id
-                          ? 'bg-amber-500/10'
-                          : 'hover:bg-stone-800/50'
+                        activeDocument?.id === doc.id ? 'bg-amber-500/10' : 'hover:bg-stone-800/50'
                       }`}
                       onClick={() => selectDocument(doc)}
                     >
@@ -322,16 +445,11 @@ export default function WriterDashboard() {
                         <ChevronRight className="w-3.5 h-3.5 text-stone-500 flex-shrink-0" onClick={(e) => { e.stopPropagation(); toggleExpand(doc.id); }} />
                       )}
                       <FileText className="w-3.5 h-3.5 text-amber-500/60 flex-shrink-0" />
-                      <span className={`text-xs truncate flex-1 ${
-                        activeDocument?.id === doc.id ? 'text-amber-400' : 'text-stone-300'
-                      }`}>
+                      <span className={`text-xs truncate flex-1 ${activeDocument?.id === doc.id ? 'text-amber-400' : 'text-stone-300'}`}>
                         {doc.title}
                       </span>
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeleteConfirm(doc.id);
-                        }}
+                        onClick={(e) => { e.stopPropagation(); setDeleteConfirm(doc.id); }}
                         className="opacity-0 group-hover:opacity-100 text-stone-500 hover:text-rose-400 transition-all"
                         title="Delete"
                       >
@@ -339,7 +457,6 @@ export default function WriterDashboard() {
                       </button>
                     </div>
 
-                    {/* Expanded content preview */}
                     {expandedDocs.has(doc.id) && (
                       <div className="ml-6 mt-1 px-2 py-2">
                         <p className="text-xs text-stone-500 line-clamp-2">
@@ -351,23 +468,12 @@ export default function WriterDashboard() {
                       </div>
                     )}
 
-                    {/* Delete confirmation */}
                     {deleteConfirm === doc.id && (
                       <div className="ml-6 mt-1 p-2 bg-rose-500/10 border border-rose-500/30 rounded-lg">
                         <p className="text-xs text-rose-400 mb-2">Delete this document?</p>
                         <div className="flex gap-2">
-                          <button
-                            onClick={() => deleteDocument(doc.id)}
-                            className="text-xs bg-rose-500 hover:bg-rose-400 text-white px-2 py-1 rounded"
-                          >
-                            Delete
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirm(null)}
-                            className="text-xs bg-stone-700 hover:bg-stone-600 text-stone-300 px-2 py-1 rounded"
-                          >
-                            Cancel
-                          </button>
+                          <button onClick={() => deleteDocument(doc.id)} className="text-xs bg-rose-500 hover:bg-rose-400 text-white px-2 py-1 rounded">Delete</button>
+                          <button onClick={() => setDeleteConfirm(null)} className="text-xs bg-stone-700 hover:bg-stone-600 text-stone-300 px-2 py-1 rounded">Cancel</button>
                         </div>
                       </div>
                     )}
@@ -387,10 +493,7 @@ export default function WriterDashboard() {
             </div>
           </>
         ) : (
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="w-12 h-12 flex items-center justify-center text-stone-500 hover:text-white transition-colors"
-          >
+          <button onClick={() => setSidebarOpen(true)} className="w-12 h-12 flex items-center justify-center text-stone-500 hover:text-white transition-colors">
             <PanelRight className="w-4 h-4" />
           </button>
         )}
@@ -398,7 +501,6 @@ export default function WriterDashboard() {
 
       {/* THE EDITOR - Center */}
       <main className="flex-1 flex flex-col min-w-0 pt-14 md:pt-0">
-        {/* Editor Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-stone-800 bg-stone-900/30">
           <div className="flex items-center gap-4 flex-1 min-w-0">
             <input
@@ -425,7 +527,6 @@ export default function WriterDashboard() {
           </div>
         </div>
 
-        {/* Editor Canvas */}
         <div className="flex-1 overflow-y-auto">
           {activeDocument ? (
             <div className="w-full h-full flex flex-col">
@@ -441,10 +542,7 @@ export default function WriterDashboard() {
               <FileText className="w-12 h-12 text-stone-700 mb-4" />
               <p className="text-stone-500 text-lg mb-2">No document selected</p>
               <p className="text-stone-600 text-sm mb-6">Create a new chapter to start writing</p>
-              <button
-                onClick={addChapter}
-                className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-semibold px-4 py-2 rounded-lg transition-colors"
-              >
+              <button onClick={addChapter} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-semibold px-4 py-2 rounded-lg transition-colors">
                 <Plus className="w-4 h-4" />
                 Add Chapter
               </button>
@@ -452,7 +550,6 @@ export default function WriterDashboard() {
           )}
         </div>
 
-        {/* Editor Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-stone-800 bg-stone-900/30 gap-4">
           <div className="flex items-center gap-3 text-xs">
             {showSaveIndicator && (
@@ -462,15 +559,9 @@ export default function WriterDashboard() {
                   : 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/30'
               }`}>
                 {saveStatus === 'saving' ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Saving...</span>
-                  </>
+                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span>Saving...</span></>
                 ) : (
-                  <>
-                    <span>✓</span>
-                    <span>Saved</span>
-                  </>
+                  <><span>&#10003;</span><span>Saved</span></>
                 )}
               </div>
             )}
@@ -492,15 +583,9 @@ export default function WriterDashboard() {
               }`}
             >
               {saving ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  Saving...
-                </>
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" />Saving...</>
               ) : (
-                <>
-                  <Save className="w-3.5 h-3.5" />
-                  Save Changes
-                </>
+                <><Save className="w-3.5 h-3.5" />Save Changes</>
               )}
             </button>
           </div>
@@ -531,75 +616,100 @@ export default function WriterDashboard() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4">
-            {activeTab === 'characters' && (
-              <div className="space-y-3">
-                <button className="w-full flex items-center gap-2 text-stone-400 hover:text-white text-xs py-2 transition-colors">
-                  <Plus className="w-4 h-4" />
-                  Add Character
-                </button>
-                {mockCharacters.map((char) => (
-                  <div
-                    key={char.id}
-                    className="group flex items-center gap-3 p-3 bg-stone-800/50 hover:bg-stone-800 rounded-xl cursor-pointer transition-colors"
-                  >
-                    <div className={`w-10 h-10 ${char.color} rounded-full flex items-center justify-center text-white text-sm font-bold`}>
-                      {char.name[0]}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white truncate">{char.name}</p>
-                      <p className="text-xs text-stone-500">{char.role}</p>
-                    </div>
-                    <button className="opacity-0 group-hover:opacity-100 text-stone-500 hover:text-white transition-all">
-                      <Edit3 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
+            {bibleLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-5 h-5 text-stone-500 animate-spin" />
               </div>
-            )}
-
-            {activeTab === 'locations' && (
+            ) : (
               <div className="space-y-3">
-                <button className="w-full flex items-center gap-2 text-stone-400 hover:text-white text-xs py-2 transition-colors">
+                <button
+                  onClick={() => setModalOpen(true)}
+                  className="w-full flex items-center gap-2 text-stone-400 hover:text-white text-xs py-2 transition-colors"
+                >
                   <Plus className="w-4 h-4" />
-                  Add Location
+                  Add {activeTab === 'character' ? 'Character' : activeTab === 'location' ? 'Location' : 'Rule'}
                 </button>
-                {mockLocations.map((loc) => (
-                  <div
-                    key={loc.id}
-                    className="group flex items-center gap-3 p-3 bg-stone-800/50 hover:bg-stone-800 rounded-xl cursor-pointer transition-colors"
-                  >
-                    <div className="w-10 h-10 bg-stone-700 rounded-lg flex items-center justify-center">
-                      <MapPin className="w-4 h-4 text-stone-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white truncate">{loc.name}</p>
-                      <p className="text-xs text-stone-500">{loc.type}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
 
-            {activeTab === 'rules' && (
-              <div className="space-y-3">
-                <button className="w-full flex items-center gap-2 text-stone-400 hover:text-white text-xs py-2 transition-colors">
-                  <Plus className="w-4 h-4" />
-                  Add Rule
-                </button>
-                {mockRules.map((r, i) => (
-                  <div
-                    key={r.id}
-                    className="group flex items-start gap-3 p-3 bg-stone-800/50 hover:bg-stone-800 rounded-xl cursor-pointer transition-colors"
-                  >
-                    <div className="w-6 h-6 bg-amber-500/10 border border-amber-500/30 rounded flex items-center justify-center text-xs font-bold text-amber-400">
-                      {i + 1}
-                    </div>
-                    <p className="flex-1 text-sm text-stone-300">{r.rule}</p>
-                    <button className="opacity-0 group-hover:opacity-100 text-stone-500 hover:text-rose-400 transition-all">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                {filteredElements.length === 0 ? (
+                  <div className="text-center py-6">
+                    <p className="text-xs text-stone-600">No {activeTab}s yet</p>
                   </div>
-                ))}
+                ) : (
+                  filteredElements.map((el, i) => (
+                    <div
+                      key={el.id}
+                      className="group relative"
+                    >
+                      {activeTab === 'character' && (
+                        <div className="flex items-center gap-3 p-3 bg-stone-800/50 hover:bg-stone-800 rounded-xl cursor-pointer transition-colors">
+                          <div className={`w-10 h-10 ${characterColors[i % characterColors.length]} rounded-full flex items-center justify-center text-white text-sm font-bold`}>
+                            {el.name[0]}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-white truncate">{el.name}</p>
+                            <p className="text-xs text-stone-500">{el.metadata?.role || 'No role'}</p>
+                          </div>
+                          <button className="opacity-0 group-hover:opacity-100 text-stone-500 hover:text-white transition-all">
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      {activeTab === 'location' && (
+                        <div className="flex items-center gap-3 p-3 bg-stone-800/50 hover:bg-stone-800 rounded-xl cursor-pointer transition-colors">
+                          <div className="w-10 h-10 bg-stone-700 rounded-lg flex items-center justify-center">
+                            <MapPin className="w-4 h-4 text-stone-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-white truncate">{el.name}</p>
+                            <p className="text-xs text-stone-500">{el.metadata?.type || 'No type'}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {activeTab === 'rule' && (
+                        <div className="flex items-start gap-3 p-3 bg-stone-800/50 hover:bg-stone-800 rounded-xl cursor-pointer transition-colors">
+                          <div className="w-6 h-6 bg-amber-500/10 border border-amber-500/30 rounded flex items-center justify-center text-xs font-bold text-amber-400 flex-shrink-0">
+                            {i + 1}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-stone-300">{el.name}</p>
+                            {el.description && <p className="text-xs text-stone-500 mt-1 line-clamp-2">{el.description}</p>}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Delete confirmation overlay */}
+                      {deleteElementConfirm === el.id && (
+                        <div className="absolute inset-0 bg-stone-900/95 rounded-xl flex flex-col items-center justify-center gap-2 p-3 z-10">
+                          <p className="text-xs text-rose-400">Delete this {activeTab}?</p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => deleteStoryElement(el.id)}
+                              className="text-xs bg-rose-500 hover:bg-rose-400 text-white px-2 py-1 rounded"
+                            >
+                              Delete
+                            </button>
+                            <button
+                              onClick={() => setDeleteElementConfirm(null)}
+                              className="text-xs bg-stone-700 hover:bg-stone-600 text-stone-300 px-2 py-1 rounded"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Hover delete button */}
+                      <button
+                        onClick={() => setDeleteElementConfirm(el.id)}
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-stone-500 hover:text-rose-400 transition-all z-0"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
             )}
           </div>
@@ -610,6 +720,16 @@ export default function WriterDashboard() {
             </p>
           </div>
         </aside>
+      )}
+
+      {/* Add Element Modal */}
+      {modalOpen && (
+        <AddElementModal
+          category={activeTab}
+          onClose={() => setModalOpen(false)}
+          onSave={addStoryElement}
+          saving={elementSaving}
+        />
       )}
 
       {/* Mobile Menu Overlay */}

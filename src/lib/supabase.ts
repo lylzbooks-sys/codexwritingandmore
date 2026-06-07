@@ -26,3 +26,16 @@ export interface BinderItem {
   order_index: number;
   status: 'draft' | 'in-progress' | 'review' | 'done';
 }
+
+export type StoryElementCategory = 'character' | 'location' | 'rule';
+
+export interface StoryElement {
+  id: string;
+  user_id: string;
+  category: StoryElementCategory;
+  name: string;
+  description: string;
+  metadata: Record<string, string>;
+  created_at: string;
+  updated_at: string;
+}
