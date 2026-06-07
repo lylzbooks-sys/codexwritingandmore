@@ -5,7 +5,7 @@ import {
   Settings, Plus,
   ChevronRight, ChevronDown, FileText, MoreHorizontal,
   PanelRightClose, PanelRight, Users as UsersIcon, MapPin, ScrollText,
-  GripVertical, Trash2, Edit3, Menu, Home, Eye, Loader2, Save
+  GripVertical, Trash2, Edit3, Menu, Home, Eye, Loader2, Save, LayoutGrid
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase, BinderItem } from '../../lib/supabase';
@@ -15,6 +15,7 @@ const navItems = [
   { icon: PenLine, label: 'Write', to: '/dashboard/writer' },
   { icon: Eye, label: 'Create Art', to: '/dashboard/artist' },
   { icon: BookMarked, label: 'Reading List', to: '/dashboard/reader' },
+  { icon: LayoutGrid, label: 'Storyboard', to: '/storyboard' },
   { icon: Settings, label: 'Settings', to: '#' },
 ];
 

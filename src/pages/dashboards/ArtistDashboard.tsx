@@ -1,7 +1,7 @@
 import { NavLink, useNavigate, Link } from 'react-router-dom';
 import {
   Palette, BookOpen, LogOut, Upload, Image,
-  Brush, Star, TrendingUp, Settings, Grid3x3, Eye, PenLine, Home, BookMarked
+  Brush, Star, TrendingUp, Settings, Grid3x3, Eye, PenLine, Home, BookMarked, LayoutGrid
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -17,6 +17,7 @@ const navItems = [
   { icon: PenLine, label: 'Write', to: '/dashboard/writer' },
   { icon: Image, label: 'Create Art', to: '/dashboard/artist' },
   { icon: BookMarked, label: 'Reading List', to: '/dashboard/reader' },
+  { icon: LayoutGrid, label: 'Storyboard', to: '/storyboard' },
   { icon: Settings, label: 'Settings', to: '#' },
 ];
 

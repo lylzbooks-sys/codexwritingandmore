@@ -23,4 +23,6 @@ export interface BinderItem {
   content: string;
   created_at: string;
   updated_at: string;
+  order_index: number;
+  status: 'draft' | 'in-progress' | 'review' | 'done';
 }

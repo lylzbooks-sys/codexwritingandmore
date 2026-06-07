@@ -10,6 +10,7 @@ import WriterDashboard from './pages/dashboards/WriterDashboard';
 import ReaderDashboard from './pages/dashboards/ReaderDashboard';
 import ArtistDashboard from './pages/dashboards/ArtistDashboard';
 import HybridDashboard from './pages/dashboards/HybridDashboard';
+import Storyboard from './pages/Storyboard';
 
 function DashboardRouter() {
   return (
@@ -36,6 +37,7 @@ export default function App() {
           {/* Auth-required */}
           <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
           <Route path="/dashboard/*" element={<ProtectedRoute><DashboardRouter /></ProtectedRoute>} />
+          <Route path="/storyboard" element={<ProtectedRoute><Storyboard /></ProtectedRoute>} />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
