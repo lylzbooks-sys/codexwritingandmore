@@ -5,7 +5,7 @@ import {
   Settings, Plus,
   ChevronRight, ChevronDown, FileText, Folder,
   PanelRightClose, PanelRight, Users as UsersIcon, MapPin, ScrollText,
-  Trash2, Edit3, Menu, Home, Eye, Loader2, Save, LayoutGrid, X, RotateCcw, Scissors
+  Trash2, Edit3, Menu, Home, Eye, Loader2, Save, LayoutGrid, X, RotateCcw, Scissors, Copy, Check
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase, BinderItem, StoryElement, StoryElementCategory } from '../../lib/supabase';
@@ -215,6 +215,7 @@ export default function WriterDashboard() {
   const [modalOpen, setModalOpen] = useState(false);
   const [elementSaving, setElementSaving] = useState(false);
   const [deleteElementConfirm, setDeleteElementConfirm] = useState<string | null>(null);
+  const [compileCopied, setCompileCopied] = useState(false);
 
   // Derived state
   const chapters = documents.filter(d => d.item_type === 'chapter').sort((a, b) => a.order_index - b.order_index);
@@ -540,6 +541,28 @@ export default function WriterDashboard() {
       setDocuments([...documents, newScene]);
       setExpandedChapters(new Set([...expandedChapters, parentId]));
       selectDocument(newScene);
+    }
+  };
+
+  const compileAndCopy = async () => {
+    if (!activeDocument || activeDocument.item_type !== 'chapter') return;
+    const scenes = getScenes(activeDocument.id);
+    const parts: string[] = [];
+    if (activeDocument.content?.trim()) {
+      parts.push(activeDocument.content.trim());
+    }
+    for (const scene of scenes) {
+      if (scene.content?.trim()) {
+        parts.push(scene.content.trim());
+      }
+    }
+    const compiled = parts.join('\n\n\n***\n\n\n');
+    try {
+      await navigator.clipboard.writeText(compiled);
+      setCompileCopied(true);
+      setTimeout(() => setCompileCopied(false), 2000);
+    } catch {
+      // ignore
     }
   };
 
@@ -965,6 +988,22 @@ export default function WriterDashboard() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-stone-600 hidden sm:inline">Cmd+S to save</span>
+            {activeDocument?.item_type === 'chapter' && (
+              <button
+                onClick={compileAndCopy}
+                className={`flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-lg transition-colors border ${
+                  compileCopied
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                    : 'bg-stone-800 hover:bg-stone-700 text-stone-300 border-stone-700'
+                }`}
+              >
+                {compileCopied ? (
+                  <><Check className="w-3.5 h-3.5" />Copied!</>
+                ) : (
+                  <><Copy className="w-3.5 h-3.5" />Compile & Copy</>
+                )}
+              </button>
+            )}
             <button
               onClick={saveDocument}
               disabled={!activeDocument || saving}
