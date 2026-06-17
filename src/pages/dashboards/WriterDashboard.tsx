@@ -5,7 +5,7 @@ import {
   Settings, Plus,
   ChevronRight, ChevronDown, FileText, Folder,
   PanelRightClose, PanelRight, Users as UsersIcon, MapPin, ScrollText,
-  Trash2, Edit3, Menu, Home, Eye, Loader2, Save, LayoutGrid, X, RotateCcw, Copy, Check
+  Trash2, Edit3, Menu, Home, Eye, Loader2, Save, LayoutGrid, X, RotateCcw, Scissors
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase, BinderItem, StoryElement, StoryElementCategory } from '../../lib/supabase';
@@ -175,107 +175,6 @@ function AddElementModal({ category, onClose, onSave, saving }: AddElementModalP
   );
 }
 
-interface ChapterOverviewProps {
-  chapter: BinderItem;
-  scenes: BinderItem[];
-}
-
-function ChapterOverview({ chapter, scenes }: ChapterOverviewProps) {
-  const [copied, setCopied] = useState(false);
-
-  const fullText = scenes
-    .map(s => s.content.trim())
-    .filter(Boolean)
-    .join('\n\n\n* * *\n\n\n');
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(fullText);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // ignore
-    }
-  };
-
-  return (
-    <div className="w-full h-full flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-8 py-4 border-b border-stone-800 bg-stone-900/20">
-        <div className="flex items-center gap-3">
-          <Folder className="w-5 h-5 text-amber-400" />
-          <div>
-            <p className="text-xs text-stone-500">Chapter Overview</p>
-            <h2 className="text-sm font-semibold text-white">{chapter.title}</h2>
-          </div>
-        </div>
-        <button
-          onClick={handleCopy}
-          disabled={!fullText}
-          className={`flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-lg transition-colors ${
-            copied
-              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-              : 'bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700'
-          } disabled:opacity-40 disabled:cursor-not-allowed`}
-        >
-          {copied ? (
-            <>
-              <Check className="w-3.5 h-3.5" />
-              Copied
-            </>
-          ) : (
-            <>
-              <Copy className="w-3.5 h-3.5" />
-              Copy Full Chapter
-            </>
-          )}
-        </button>
-      </div>
-
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto">
-        {scenes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center px-8">
-            <FileText className="w-10 h-10 text-stone-700 mb-3" />
-            <p className="text-stone-500 text-sm mb-1">No scenes yet</p>
-            <p className="text-stone-600 text-xs">Add scenes to this chapter to see them here.</p>
-          </div>
-        ) : (
-          <div className="max-w-3xl mx-auto py-8 px-6 space-y-0">
-            {scenes.map((scene, i) => (
-              <div key={scene.id}>
-                {/* Scene title */}
-                <div className="flex items-center gap-2 mb-3">
-                  <FileText className="w-3.5 h-3.5 text-stone-500" />
-                  <h3 className="text-sm font-medium text-stone-400">{scene.title}</h3>
-                </div>
-                {/* Scene content */}
-                <div className="prose prose-invert prose-sm max-w-none">
-                  {scene.content ? (
-                    <p className="text-stone-300 leading-relaxed whitespace-pre-wrap font-serif">
-                      {scene.content}
-                    </p>
-                  ) : (
-                    <p className="text-stone-600 italic">Empty scene</p>
-                  )}
-                </div>
-                {/* Divider between scenes */}
-                {i < scenes.length - 1 && (
-                  <div className="flex items-center justify-center gap-4 my-10">
-                    <div className="h-px flex-1 bg-stone-800" />
-                    <span className="text-xs text-stone-600 font-medium tracking-widest">* * *</span>
-                    <div className="h-px flex-1 bg-stone-800" />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function WriterDashboard() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
@@ -305,8 +204,10 @@ export default function WriterDashboard() {
   const [recoveryDraft, setRecoveryDraft] = useState<SavedDraft | null>(null);
   const [showRecoveryBanner, setShowRecoveryBanner] = useState(false);
 
-  // View mode: editor for scenes, chapter overview for chapters
-  const [viewMode, setViewMode] = useState<'editor' | 'chapterOverview'>('chapterOverview');
+  // Text selection state for 'Extract to Scene' feature
+  const [selectionRange, setSelectionRange] = useState<{ start: number; end: number; text: string } | null>(null);
+  const [toolbarPos, setToolbarPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Story Bible state
   const [storyElements, setStoryElements] = useState<StoryElement[]>([]);
@@ -497,7 +398,7 @@ export default function WriterDashboard() {
     setActiveDocument(doc);
     setEditorContent(doc.content || '');
     setEditorTitle(doc.title);
-    setViewMode(doc.item_type === 'chapter' ? 'chapterOverview' : 'editor');
+    setSelectionRange(null);
   };
 
   const saveDocument = async () => {
@@ -550,6 +451,95 @@ export default function WriterDashboard() {
           setEditorTitle('');
         }
       }
+    }
+  };
+
+  // Text selection handlers for 'Extract to Scene'
+  const handleTextSelection = (e: MouseEvent | KeyboardEvent) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    if (start !== end) {
+      const text = textarea.value.slice(start, end);
+      setSelectionRange({ start, end, text });
+      // Position toolbar near the selection
+      const rect = textarea.getBoundingClientRect();
+      const parentRect = textarea.parentElement!.getBoundingClientRect();
+      let x = 16;
+      let y = 16;
+      if ('clientX' in e) {
+        x = e.clientX - parentRect.left + 12;
+        y = e.clientY - parentRect.top + 12;
+      } else {
+        const charWidth = 8;
+        const lineHeight = 24;
+        const cols = Math.floor(rect.width / charWidth);
+        x = (start % cols) * charWidth + (rect.left - parentRect.left) + 16;
+        y = Math.floor(start / cols) * lineHeight + (rect.top - parentRect.top) + 16;
+      }
+      // Clamp within parent bounds
+      x = Math.max(8, Math.min(x, parentRect.width - 140));
+      y = Math.max(8, Math.min(y, parentRect.height - 40));
+      setToolbarPos({ x, y });
+    } else {
+      setSelectionRange(null);
+    }
+  };
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const onMouseUp = (e: MouseEvent) => handleTextSelection(e);
+    const onKeyUp = (e: KeyboardEvent) => handleTextSelection(e);
+    textarea.addEventListener('mouseup', onMouseUp);
+    textarea.addEventListener('keyup', onKeyUp);
+    return () => {
+      textarea.removeEventListener('mouseup', onMouseUp);
+      textarea.removeEventListener('keyup', onKeyUp);
+    };
+  }, [activeDocument]);
+
+  const extractToScene = async () => {
+    if (!selectionRange || !activeDocument || activeDocument.item_type !== 'chapter') return;
+    const parentId = activeDocument.id;
+    const { start, end, text } = selectionRange;
+
+    // Remove the highlighted text from the chapter
+    const before = editorContent.slice(0, start);
+    const after = editorContent.slice(end);
+    const newContent = before + after;
+    setEditorContent(newContent);
+    setSelectionRange(null);
+
+    // Update chapter in DB
+    await supabase
+      .from('binder_items')
+      .update({ content: newContent })
+      .eq('id', parentId);
+
+    // Get the next order index for the new scene
+    const siblingScenes = getScenes(parentId);
+    const nextOrder = siblingScenes.length;
+
+    // Create new scene
+    const { data: newScene, error } = await supabase
+      .from('binder_items')
+      .insert({
+        user_id: user?.id,
+        title: `Scene ${nextOrder + 1}`,
+        content: text,
+        item_type: 'scene',
+        parent_id: parentId,
+        order_index: nextOrder,
+      })
+      .select()
+      .single();
+
+    if (!error && newScene) {
+      setDocuments([...documents, newScene]);
+      setExpandedChapters(new Set([...expandedChapters, parentId]));
+      selectDocument(newScene);
     }
   };
 
@@ -910,21 +900,35 @@ export default function WriterDashboard() {
           )}
 
           {activeDocument ? (
-            viewMode === 'chapterOverview' ? (
-              <ChapterOverview
-                chapter={activeDocument}
-                scenes={getScenes(activeDocument.id)}
+            <div className="w-full h-full flex flex-col relative">
+              <textarea
+                ref={textareaRef}
+                value={editorContent}
+                onChange={(e) => setEditorContent(e.target.value)}
+                className="editor-textarea flex-1 focus:outline-none"
+                placeholder="Begin your story here... The cursor blinks, waiting for your first words."
               />
-            ) : (
-              <div className="w-full h-full flex flex-col">
-                <textarea
-                  value={editorContent}
-                  onChange={(e) => setEditorContent(e.target.value)}
-                  className="editor-textarea flex-1 focus:outline-none"
-                  placeholder="Begin your story here... The cursor blinks, waiting for your first words."
-                />
-              </div>
-            )
+              {/* Floating Extract-to-Scene Toolbar */}
+              {selectionRange && activeDocument?.item_type === 'chapter' && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: `${toolbarPos.x}px`,
+                    top: `${toolbarPos.y}px`,
+                    zIndex: 50,
+                  }}
+                  className="bg-stone-900 border border-stone-700 shadow-lg rounded-lg px-3 py-2 flex items-center gap-2 animate-in fade-in zoom-in-95 duration-150"
+                >
+                  <button
+                    onClick={extractToScene}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-amber-400 hover:text-amber-300 transition-colors"
+                  >
+                    <Scissors className="w-3.5 h-3.5" />
+                    Extract to Scene
+                  </button>
+                </div>
+              )}
+            </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
               <FileText className="w-12 h-12 text-stone-700 mb-4" />
