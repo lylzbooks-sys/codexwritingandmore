@@ -3,7 +3,7 @@ import { NavLink, useNavigate, Link } from 'react-router-dom';
 import {
   BookOpen, LogOut, PenLine, BookMarked,
   Settings, Plus,
-  ChevronRight, ChevronDown, FileText,
+  ChevronRight, ChevronDown, FileText, Folder,
   PanelRightClose, PanelRight, Users as UsersIcon, MapPin, ScrollText,
   Trash2, Edit3, Menu, Home, Eye, Loader2, Save, LayoutGrid, X, RotateCcw
 } from 'lucide-react';
@@ -188,13 +188,17 @@ export default function WriterDashboard() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
+  const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [showSaveIndicator, setShowSaveIndicator] = useState(false);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestContentRef = useRef(editorContent);
   const latestTitleRef = useRef(editorTitle);
+
+  // Drag and drop state
+  const [draggedSceneId, setDraggedSceneId] = useState<string | null>(null);
+  const [dragOverChapterId, setDragOverChapterId] = useState<string | null>(null);
 
   // Session recovery state
   const [recoveryDraft, setRecoveryDraft] = useState<SavedDraft | null>(null);
@@ -206,6 +210,10 @@ export default function WriterDashboard() {
   const [modalOpen, setModalOpen] = useState(false);
   const [elementSaving, setElementSaving] = useState(false);
   const [deleteElementConfirm, setDeleteElementConfirm] = useState<string | null>(null);
+
+  // Derived state
+  const chapters = documents.filter(d => d.item_type === 'chapter').sort((a, b) => a.order_index - b.order_index);
+  const getScenes = (chapterId: string) => documents.filter(d => d.parent_id === chapterId).sort((a, b) => a.order_index - b.order_index);
 
   // Fetch documents on mount
   useEffect(() => {
@@ -303,14 +311,16 @@ export default function WriterDashboard() {
       .from('binder_items')
       .select('*')
       .eq('user_id', user?.id)
-      .order('created_at', { ascending: true });
+      .order('order_index', { ascending: true });
 
     if (!error && data) {
       setDocuments(data);
-      if (data.length > 0 && !activeDocument) {
-        setActiveDocument(data[0]);
-        setEditorContent(data[0].content || '');
-        setEditorTitle(data[0].title);
+      const firstChapter = data.find(d => d.item_type === 'chapter');
+      if (firstChapter && !activeDocument) {
+        setActiveDocument(firstChapter);
+        setEditorContent(firstChapter.content || '');
+        setEditorTitle(firstChapter.title);
+        setExpandedChapters(new Set([firstChapter.id]));
       }
     }
     setLoading(false);
@@ -331,13 +341,17 @@ export default function WriterDashboard() {
   };
 
   const addChapter = async () => {
-    const title = documents.length === 0
-      ? 'Untitled Document'
-      : `Chapter ${documents.filter(d => d.title.startsWith('Chapter')).length + 1}`;
-
+    const title = `Chapter ${chapters.length + 1}`;
     const { data, error } = await supabase
       .from('binder_items')
-      .insert({ user_id: user?.id, title, content: '' })
+      .insert({
+        user_id: user?.id,
+        title,
+        content: '',
+        item_type: 'chapter',
+        parent_id: null,
+        order_index: chapters.length,
+      })
       .select()
       .single();
 
@@ -346,7 +360,32 @@ export default function WriterDashboard() {
       setActiveDocument(data);
       setEditorContent('');
       setEditorTitle(data.title);
-      setExpandedDocs(new Set([...expandedDocs, data.id]));
+      setExpandedChapters(new Set([...expandedChapters, data.id]));
+    }
+  };
+
+  const addScene = async (chapterId: string) => {
+    const scenes = getScenes(chapterId);
+    const title = `Scene ${scenes.length + 1}`;
+    const { data, error } = await supabase
+      .from('binder_items')
+      .insert({
+        user_id: user?.id,
+        title,
+        content: '',
+        item_type: 'scene',
+        parent_id: chapterId,
+        order_index: scenes.length,
+      })
+      .select()
+      .single();
+
+    if (!error && data) {
+      setDocuments([...documents, data]);
+      setActiveDocument(data);
+      setEditorContent('');
+      setEditorTitle(data.title);
+      setExpandedChapters(new Set([...expandedChapters, chapterId]));
     }
   };
 
@@ -380,18 +419,26 @@ export default function WriterDashboard() {
   };
 
   const deleteDocument = async (docId: string) => {
+    const doc = documents.find(d => d.id === docId);
+    if (!doc) return;
+
     const { error } = await supabase
       .from('binder_items')
       .delete()
       .eq('id', docId);
 
     if (!error) {
-      const updatedDocs = documents.filter(d => d.id !== docId);
+      let updatedDocs = documents.filter(d => d.id !== docId);
+      // If deleting a chapter, also remove its scenes from state
+      if (doc.item_type === 'chapter') {
+        updatedDocs = updatedDocs.filter(d => d.parent_id !== docId);
+      }
       setDocuments(updatedDocs);
       setDeleteConfirm(null);
       if (activeDocument?.id === docId) {
         if (updatedDocs.length > 0) {
-          selectDocument(updatedDocs[0]);
+          const next = updatedDocs.find(d => d.item_type === 'chapter') || updatedDocs[0];
+          selectDocument(next);
         } else {
           setActiveDocument(null);
           setEditorContent('');
@@ -435,11 +482,51 @@ export default function WriterDashboard() {
     }
   };
 
-  const toggleExpand = (docId: string) => {
-    const newExpanded = new Set(expandedDocs);
-    if (newExpanded.has(docId)) newExpanded.delete(docId);
-    else newExpanded.add(docId);
-    setExpandedDocs(newExpanded);
+  const toggleExpandChapter = (chapterId: string) => {
+    const newExpanded = new Set(expandedChapters);
+    if (newExpanded.has(chapterId)) newExpanded.delete(chapterId);
+    else newExpanded.add(chapterId);
+    setExpandedChapters(newExpanded);
+  };
+
+  // Drag and drop handlers
+  const handleDragStart = (sceneId: string) => {
+    setDraggedSceneId(sceneId);
+  };
+
+  const handleDragOver = (e: React.DragEvent, chapterId: string) => {
+    e.preventDefault();
+    setDragOverChapterId(chapterId);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverChapterId(null);
+  };
+
+  const handleDrop = async (e: React.DragEvent, chapterId: string) => {
+    e.preventDefault();
+    if (!draggedSceneId) return;
+
+    const scene = documents.find(d => d.id === draggedSceneId);
+    if (!scene || scene.parent_id === chapterId) {
+      setDragOverChapterId(null);
+      setDraggedSceneId(null);
+      return;
+    }
+
+    const { error } = await supabase
+      .from('binder_items')
+      .update({ parent_id: chapterId })
+      .eq('id', draggedSceneId);
+
+    if (!error) {
+      setDocuments(documents.map(d =>
+        d.id === draggedSceneId ? { ...d, parent_id: chapterId } : d
+      ));
+      setExpandedChapters(new Set([...expandedChapters, chapterId]));
+    }
+    setDragOverChapterId(null);
+    setDraggedSceneId(null);
   };
 
   const wordCount = editorContent.trim() ? editorContent.trim().split(/\s+/).length : 0;
@@ -504,7 +591,7 @@ export default function WriterDashboard() {
             <BookOpen className="w-5 h-5 text-amber-500" />
           </Link>
         </div>
-        <h1 className="text-sm font-semibold tracking-wide">The Writer's Engine</h1>
+        <h1 className="text-sm font-semibold tracking-wide">The Writer&apos;s Engine</h1>
         <button onClick={async () => { await signOut(); navigate('/'); }} className="text-stone-400">
           <LogOut className="w-5 h-5" />
         </button>
@@ -513,7 +600,7 @@ export default function WriterDashboard() {
       {/* THE BINDER - Left Sidebar */}
       <aside
         className={`${
-          sidebarOpen ? 'w-64' : 'w-12'
+          sidebarOpen ? 'w-72' : 'w-12'
         } hidden md:flex flex-col bg-stone-900/50 border-r border-stone-800 transition-all duration-300 overflow-hidden`}
       >
         {sidebarOpen ? (
@@ -525,7 +612,7 @@ export default function WriterDashboard() {
                 </div>
                 <div>
                   <h2 className="text-sm font-semibold">The Binder</h2>
-                  <p className="text-xs text-stone-500">{documents.length} document{documents.length !== 1 ? 's' : ''}</p>
+                  <p className="text-xs text-stone-500">{chapters.length} chapter{chapters.length !== 1 ? 's' : ''}</p>
                 </div>
               </div>
               <button onClick={() => setSidebarOpen(false)} className="text-stone-500 hover:text-white transition-colors">
@@ -538,61 +625,106 @@ export default function WriterDashboard() {
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-5 h-5 text-stone-500 animate-spin" />
                 </div>
-              ) : documents.length === 0 ? (
+              ) : chapters.length === 0 ? (
                 <div className="text-center py-8">
-                  <FileText className="w-8 h-8 text-stone-700 mx-auto mb-2" />
-                  <p className="text-xs text-stone-500">No documents yet</p>
-                  <p className="text-xs text-stone-600 mt-1">Click "Add Chapter" to begin</p>
+                  <Folder className="w-8 h-8 text-stone-700 mx-auto mb-2" />
+                  <p className="text-xs text-stone-500">No chapters yet</p>
+                  <p className="text-xs text-stone-600 mt-1">Click &quot;Add Chapter&quot; to begin</p>
                 </div>
               ) : (
-                documents.map((doc) => (
-                  <div key={doc.id} className="select-none">
-                    <div
-                      className={`group flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
-                        activeDocument?.id === doc.id ? 'bg-amber-500/10' : 'hover:bg-stone-800/50'
-                      }`}
-                      onClick={() => selectDocument(doc)}
-                    >
-                      {expandedDocs.has(doc.id) ? (
-                        <ChevronDown className="w-3.5 h-3.5 text-stone-500 flex-shrink-0" onClick={(e) => { e.stopPropagation(); toggleExpand(doc.id); }} />
-                      ) : (
-                        <ChevronRight className="w-3.5 h-3.5 text-stone-500 flex-shrink-0" onClick={(e) => { e.stopPropagation(); toggleExpand(doc.id); }} />
-                      )}
-                      <FileText className="w-3.5 h-3.5 text-amber-500/60 flex-shrink-0" />
-                      <span className={`text-xs truncate flex-1 ${activeDocument?.id === doc.id ? 'text-amber-400' : 'text-stone-300'}`}>
-                        {doc.title}
-                      </span>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setDeleteConfirm(doc.id); }}
-                        className="opacity-0 group-hover:opacity-100 text-stone-500 hover:text-rose-400 transition-all"
-                        title="Delete"
+                chapters.map((chapter) => {
+                  const scenes = getScenes(chapter.id);
+                  const isExpanded = expandedChapters.has(chapter.id);
+                  const isDragOver = dragOverChapterId === chapter.id;
+                  const isActive = activeDocument?.id === chapter.id;
+
+                  return (
+                    <div key={chapter.id} className="select-none">
+                      {/* Chapter Row */}
+                      <div
+                        className={`group flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-all ${
+                          isActive ? 'bg-amber-500/10' : 'hover:bg-stone-800/50'
+                        } ${isDragOver ? 'ring-1 ring-amber-500/50 bg-amber-500/5' : ''}`}
+                        onClick={() => selectDocument(chapter)}
+                        onDragOver={(e) => handleDragOver(e, chapter.id)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, chapter.id)}
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-
-                    {expandedDocs.has(doc.id) && (
-                      <div className="ml-6 mt-1 px-2 py-2">
-                        <p className="text-xs text-stone-500 line-clamp-2">
-                          {doc.content ? doc.content.slice(0, 100) + '...' : 'Empty document'}
-                        </p>
-                        <p className="text-xs text-stone-600 mt-1">
-                          {doc.content ? `${doc.content.trim().split(/\s+/).length} words` : '0 words'}
-                        </p>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); toggleExpandChapter(chapter.id); }}
+                          className="text-stone-500 hover:text-stone-300 transition-colors"
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="w-3.5 h-3.5 flex-shrink-0" />
+                          ) : (
+                            <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" />
+                          )}
+                        </button>
+                        <Folder className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-amber-400' : 'text-stone-500'}`} />
+                        <span className={`text-xs truncate flex-1 ${isActive ? 'text-amber-400' : 'text-stone-300'}`}>
+                          {chapter.title}
+                        </span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDeleteConfirm(chapter.id); }}
+                          className="opacity-0 group-hover:opacity-100 text-stone-500 hover:text-rose-400 transition-all"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                    )}
 
-                    {deleteConfirm === doc.id && (
-                      <div className="ml-6 mt-1 p-2 bg-rose-500/10 border border-rose-500/30 rounded-lg">
-                        <p className="text-xs text-rose-400 mb-2">Delete this document?</p>
-                        <div className="flex gap-2">
-                          <button onClick={() => deleteDocument(doc.id)} className="text-xs bg-rose-500 hover:bg-rose-400 text-white px-2 py-1 rounded">Delete</button>
-                          <button onClick={() => setDeleteConfirm(null)} className="text-xs bg-stone-700 hover:bg-stone-600 text-stone-300 px-2 py-1 rounded">Cancel</button>
+                      {/* Scenes List */}
+                      {isExpanded && (
+                        <div className="ml-4 mt-0.5 space-y-0.5">
+                          {scenes.map((scene) => {
+                            const isSceneActive = activeDocument?.id === scene.id;
+                            return (
+                              <div
+                                key={scene.id}
+                                draggable
+                                onDragStart={() => handleDragStart(scene.id)}
+                                className={`group flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-move transition-all ${
+                                  isSceneActive ? 'bg-amber-500/10' : 'hover:bg-stone-800/40'
+                                }`}
+                                onClick={() => selectDocument(scene)}
+                              >
+                                <FileText className={`w-3 h-3 flex-shrink-0 ${isSceneActive ? 'text-amber-400' : 'text-stone-600'}`} />
+                                <span className={`text-xs truncate flex-1 ${isSceneActive ? 'text-amber-400' : 'text-stone-400'}`}>
+                                  {scene.title}
+                                </span>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setDeleteConfirm(scene.id); }}
+                                  className="opacity-0 group-hover:opacity-100 text-stone-500 hover:text-rose-400 transition-all"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                          <button
+                            onClick={() => addScene(chapter.id)}
+                            className="flex items-center gap-1.5 px-2 py-1 text-xs text-stone-500 hover:text-stone-300 transition-colors rounded-lg hover:bg-stone-800/30"
+                          >
+                            <Plus className="w-3 h-3" />
+                            Add Scene
+                          </button>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                ))
+                      )}
+
+                      {/* Delete confirmation */}
+                      {deleteConfirm === chapter.id && (
+                        <div className="ml-4 mt-1 p-2 bg-rose-500/10 border border-rose-500/30 rounded-lg">
+                          <p className="text-xs text-rose-400 mb-2">Delete this chapter and all its scenes?</p>
+                          <div className="flex gap-2">
+                            <button onClick={() => deleteDocument(chapter.id)} className="text-xs bg-rose-500 hover:bg-rose-400 text-white px-2 py-1 rounded">Delete</button>
+                            <button onClick={() => setDeleteConfirm(null)} className="text-xs bg-stone-700 hover:bg-stone-600 text-stone-300 px-2 py-1 rounded">Cancel</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
 

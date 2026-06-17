@@ -25,6 +25,8 @@ export interface BinderItem {
   updated_at: string;
   order_index: number;
   status: 'draft' | 'in-progress' | 'review' | 'done';
+  parent_id: string | null;
+  item_type: 'chapter' | 'scene';
 }
 
 export type StoryElementCategory = 'character' | 'location' | 'rule';
