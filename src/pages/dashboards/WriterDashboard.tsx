@@ -5,7 +5,7 @@ import {
   Settings, Plus,
   ChevronRight, ChevronDown, FileText, Folder,
   PanelRightClose, PanelRight, Users as UsersIcon, MapPin, ScrollText,
-  Trash2, Edit3, Menu, Home, Eye, Loader2, Save, LayoutGrid, X, RotateCcw
+  Trash2, Edit3, Menu, Home, Eye, Loader2, Save, LayoutGrid, X, RotateCcw, Copy, Check
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase, BinderItem, StoryElement, StoryElementCategory } from '../../lib/supabase';
@@ -175,6 +175,107 @@ function AddElementModal({ category, onClose, onSave, saving }: AddElementModalP
   );
 }
 
+interface ChapterOverviewProps {
+  chapter: BinderItem;
+  scenes: BinderItem[];
+}
+
+function ChapterOverview({ chapter, scenes }: ChapterOverviewProps) {
+  const [copied, setCopied] = useState(false);
+
+  const fullText = scenes
+    .map(s => s.content.trim())
+    .filter(Boolean)
+    .join('\n\n\n* * *\n\n\n');
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(fullText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore
+    }
+  };
+
+  return (
+    <div className="w-full h-full flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-8 py-4 border-b border-stone-800 bg-stone-900/20">
+        <div className="flex items-center gap-3">
+          <Folder className="w-5 h-5 text-amber-400" />
+          <div>
+            <p className="text-xs text-stone-500">Chapter Overview</p>
+            <h2 className="text-sm font-semibold text-white">{chapter.title}</h2>
+          </div>
+        </div>
+        <button
+          onClick={handleCopy}
+          disabled={!fullText}
+          className={`flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-lg transition-colors ${
+            copied
+              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+              : 'bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700'
+          } disabled:opacity-40 disabled:cursor-not-allowed`}
+        >
+          {copied ? (
+            <>
+              <Check className="w-3.5 h-3.5" />
+              Copied
+            </>
+          ) : (
+            <>
+              <Copy className="w-3.5 h-3.5" />
+              Copy Full Chapter
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto">
+        {scenes.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center px-8">
+            <FileText className="w-10 h-10 text-stone-700 mb-3" />
+            <p className="text-stone-500 text-sm mb-1">No scenes yet</p>
+            <p className="text-stone-600 text-xs">Add scenes to this chapter to see them here.</p>
+          </div>
+        ) : (
+          <div className="max-w-3xl mx-auto py-8 px-6 space-y-0">
+            {scenes.map((scene, i) => (
+              <div key={scene.id}>
+                {/* Scene title */}
+                <div className="flex items-center gap-2 mb-3">
+                  <FileText className="w-3.5 h-3.5 text-stone-500" />
+                  <h3 className="text-sm font-medium text-stone-400">{scene.title}</h3>
+                </div>
+                {/* Scene content */}
+                <div className="prose prose-invert prose-sm max-w-none">
+                  {scene.content ? (
+                    <p className="text-stone-300 leading-relaxed whitespace-pre-wrap font-serif">
+                      {scene.content}
+                    </p>
+                  ) : (
+                    <p className="text-stone-600 italic">Empty scene</p>
+                  )}
+                </div>
+                {/* Divider between scenes */}
+                {i < scenes.length - 1 && (
+                  <div className="flex items-center justify-center gap-4 my-10">
+                    <div className="h-px flex-1 bg-stone-800" />
+                    <span className="text-xs text-stone-600 font-medium tracking-widest">* * *</span>
+                    <div className="h-px flex-1 bg-stone-800" />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function WriterDashboard() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
@@ -203,6 +304,9 @@ export default function WriterDashboard() {
   // Session recovery state
   const [recoveryDraft, setRecoveryDraft] = useState<SavedDraft | null>(null);
   const [showRecoveryBanner, setShowRecoveryBanner] = useState(false);
+
+  // View mode: editor for scenes, chapter overview for chapters
+  const [viewMode, setViewMode] = useState<'editor' | 'chapterOverview'>('chapterOverview');
 
   // Story Bible state
   const [storyElements, setStoryElements] = useState<StoryElement[]>([]);
@@ -393,6 +497,7 @@ export default function WriterDashboard() {
     setActiveDocument(doc);
     setEditorContent(doc.content || '');
     setEditorTitle(doc.title);
+    setViewMode(doc.item_type === 'chapter' ? 'chapterOverview' : 'editor');
   };
 
   const saveDocument = async () => {
@@ -805,14 +910,21 @@ export default function WriterDashboard() {
           )}
 
           {activeDocument ? (
-            <div className="w-full h-full flex flex-col">
-              <textarea
-                value={editorContent}
-                onChange={(e) => setEditorContent(e.target.value)}
-                className="editor-textarea flex-1 focus:outline-none"
-                placeholder="Begin your story here... The cursor blinks, waiting for your first words."
+            viewMode === 'chapterOverview' ? (
+              <ChapterOverview
+                chapter={activeDocument}
+                scenes={getScenes(activeDocument.id)}
               />
-            </div>
+            ) : (
+              <div className="w-full h-full flex flex-col">
+                <textarea
+                  value={editorContent}
+                  onChange={(e) => setEditorContent(e.target.value)}
+                  className="editor-textarea flex-1 focus:outline-none"
+                  placeholder="Begin your story here... The cursor blinks, waiting for your first words."
+                />
+              </div>
+            )
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
               <FileText className="w-12 h-12 text-stone-700 mb-4" />
