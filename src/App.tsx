@@ -1,8 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute, GuestRoute } from './components/RouteGuards';
+import { useAuth } from './context/AuthContext';
 
 import Landing from './pages/Landing';
+import CommunityHome from './pages/CommunityHome';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Onboarding from './pages/Onboarding';
@@ -24,13 +26,41 @@ function DashboardRouter() {
   );
 }
 
+// Shows Landing to guests, redirects logged-in users to /home
+function LandingOrHome() {
+  const { user, profile, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-stone-950 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (user && profile?.onboarding_complete) {
+    return <Navigate to="/home" replace />;
+  }
+
+  if (user && !profile?.onboarding_complete) {
+    return <Navigate to="/onboarding" replace />;
+  }
+
+  return <Landing />;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          {/* Public routes */}
-          <Route path="/" element={<Landing />} />
+          {/* Root: marketing page for guests, /home for logged-in users */}
+          <Route path="/" element={<LandingOrHome />} />
+
+          {/* Community hub */}
+          <Route path="/home" element={<ProtectedRoute><CommunityHome /></ProtectedRoute>} />
+
+          {/* Auth */}
           <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
           <Route path="/signup" element={<GuestRoute><Signup /></GuestRoute>} />
 

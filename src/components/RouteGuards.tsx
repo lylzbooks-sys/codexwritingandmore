@@ -36,8 +36,7 @@ export function GuestRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (user && profile?.onboarding_complete) {
-    const dash = `/dashboard/${profile.role}`;
-    return <Navigate to={dash} replace />;
+    return <Navigate to="/home" replace />;
   }
 
   if (user && !profile?.onboarding_complete) {

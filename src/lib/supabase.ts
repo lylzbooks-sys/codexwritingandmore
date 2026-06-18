@@ -12,8 +12,21 @@ export interface Profile {
   username: string | null;
   role: UserRole | null;
   onboarding_complete: boolean;
+  xp: number;
+  rank: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface SocialUpdate {
+  id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  username: string | null;
+  role: UserRole | null;
+  xp: number;
+  rank: string;
 }
 
 export interface BinderItem {
