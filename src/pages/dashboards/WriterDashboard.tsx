@@ -4,11 +4,12 @@ import {
   BookOpen, LogOut, PenLine, BookMarked,
   Settings, Plus,
   ChevronRight, ChevronDown, FileText, Folder,
-  PanelRightClose, PanelRight, Users as UsersIcon, MapPin, ScrollText,
-  Trash2, Edit3, Menu, Home, Eye, Loader2, Save, LayoutGrid, X, RotateCcw, Scissors, Copy, Check
+  PanelRightClose, PanelRight, Users as UsersIcon, MapPin as MapPinIcon, ScrollText,
+  Trash2, Edit3, Menu, Home, Eye, Loader2, Save, LayoutGrid, X, RotateCcw, Scissors, Copy, Check,
+  Upload, Map, ExternalLink
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { supabase, BinderItem, StoryElement, StoryElementCategory } from '../../lib/supabase';
+import { supabase, BinderItem, StoryElement, StoryElementCategory, WorldMap, MapPin } from '../../lib/supabase';
 
 const DRAFT_KEY = 'codex_draft_';
 
@@ -55,13 +56,143 @@ const navItems = [
   { icon: Settings, label: 'Settings', to: '#' },
 ];
 
-const bibleTabs: { id: StoryElementCategory; label: string; icon: typeof UsersIcon }[] = [
+type BibleTab = StoryElementCategory | 'atlas';
+
+const bibleTabs: { id: BibleTab; label: string; icon: typeof UsersIcon }[] = [
   { id: 'character', label: 'Characters', icon: UsersIcon },
-  { id: 'location', label: 'Locations', icon: MapPin },
+  { id: 'location', label: 'Locations', icon: MapPinIcon },
   { id: 'rule', label: 'World Rules', icon: ScrollText },
+  { id: 'atlas', label: 'Atlas', icon: Map },
 ];
 
 const characterColors = ['bg-amber-500', 'bg-sky-500', 'bg-rose-500', 'bg-emerald-500', 'bg-violet-500', 'bg-orange-500'];
+
+interface AtlasPanelProps {
+  worldMap: WorldMap | null;
+  mapImageUrl: string | null;
+  mapUploading: boolean;
+  mapPins: MapPin[];
+  mapImageRef: React.RefObject<HTMLDivElement>;
+  onMapUpload: (file: File) => void;
+  onMapClick: (e: React.MouseEvent<HTMLDivElement>) => void;
+  onDeletePin: (pinId: string) => void;
+}
+
+function AtlasPanel({ worldMap, mapImageUrl, mapUploading, mapPins, mapImageRef, onMapUpload, onMapClick, onDeletePin }: AtlasPanelProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [hoveredPin, setHoveredPin] = useState<string | null>(null);
+
+  return (
+    <div className="flex flex-col h-full">
+      {!worldMap ? (
+        /* Empty state */
+        <div className="flex flex-col items-center justify-center h-full text-center px-6 py-10">
+          <div className="w-16 h-16 bg-stone-800 rounded-2xl flex items-center justify-center mb-4 border border-stone-700">
+            <Map className="w-7 h-7 text-stone-500" />
+          </div>
+          <p className="text-sm font-medium text-stone-300 mb-1">No map uploaded</p>
+          <p className="text-xs text-stone-600 mb-6 leading-relaxed">
+            Upload a world map to start placing location pins and navigating your story's geography.
+          </p>
+          <div className="flex flex-col gap-2 w-full">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={mapUploading}
+              className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-semibold px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {mapUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              {mapUploading ? 'Uploading...' : 'Upload Map'}
+            </button>
+            <NavLink
+              to="/artist-guild"
+              className="w-full flex items-center justify-center gap-2 bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-semibold px-4 py-2.5 rounded-lg transition-colors border border-stone-700"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Explore Artist Guild
+            </NavLink>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) onMapUpload(f); }}
+          />
+        </div>
+      ) : (
+        /* Map view */
+        <div className="flex flex-col h-full">
+          {/* Toolbar */}
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-stone-800 bg-stone-900/30">
+            <p className="text-xs text-stone-500">Click map to place a pin</p>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={mapUploading}
+              className="flex items-center gap-1.5 text-xs text-stone-400 hover:text-white transition-colors"
+            >
+              {mapUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+              Replace
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) onMapUpload(f); }}
+            />
+          </div>
+
+          {/* Map image */}
+          <div className="flex-1 overflow-hidden relative">
+            <div
+              ref={mapImageRef}
+              onClick={onMapClick}
+              className="absolute inset-0 cursor-crosshair"
+              style={{ userSelect: 'none' }}
+            >
+              <img
+                src={mapImageUrl!}
+                alt="World map"
+                className="w-full h-full object-contain"
+                draggable={false}
+              />
+              {/* Pins */}
+              {mapPins.map(pin => (
+                <div
+                  key={pin.id}
+                  className="absolute group"
+                  style={{ left: `${pin.x_pct}%`, top: `${pin.y_pct}%`, transform: 'translate(-50%, -100%)' }}
+                  onMouseEnter={() => setHoveredPin(pin.id)}
+                  onMouseLeave={() => setHoveredPin(null)}
+                >
+                  {/* Pin */}
+                  <div className="relative flex flex-col items-center">
+                    <div className="w-6 h-6 bg-amber-500 border-2 border-amber-300 rounded-full shadow-lg flex items-center justify-center">
+                      <MapPinIcon className="w-3 h-3 text-stone-900" />
+                    </div>
+                    <div className="w-0.5 h-2 bg-amber-500" />
+                  </div>
+                  {/* Tooltip */}
+                  {hoveredPin === pin.id && (
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-stone-900 border border-stone-700 rounded-lg px-2.5 py-1.5 whitespace-nowrap shadow-xl z-10">
+                      <p className="text-xs font-medium text-white">{pin.label ?? 'Unnamed Pin'}</p>
+                      <button
+                        onClick={e => { e.stopPropagation(); onDeletePin(pin.id); }}
+                        className="text-xs text-rose-400 hover:text-rose-300 mt-0.5"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface AddElementModalProps {
   category: StoryElementCategory;
@@ -183,7 +314,7 @@ export default function WriterDashboard() {
   const [editorContent, setEditorContent] = useState('');
   const [editorTitle, setEditorTitle] = useState('');
   const [bibleOpen, setBibleOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState<StoryElementCategory>('character');
+  const [activeTab, setActiveTab] = useState<BibleTab>('character');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -217,6 +348,17 @@ export default function WriterDashboard() {
   const [deleteElementConfirm, setDeleteElementConfirm] = useState<string | null>(null);
   const [compileCopied, setCompileCopied] = useState(false);
 
+  // Atlas state
+  const [worldMap, setWorldMap] = useState<WorldMap | null>(null);
+  const [mapPins, setMapPins] = useState<MapPin[]>([]);
+  const [mapImageUrl, setMapImageUrl] = useState<string | null>(null);
+  const [mapUploading, setMapUploading] = useState(false);
+  const [pendingPin, setPendingPin] = useState<{ x: number; y: number } | null>(null);
+  const [pinModalOpen, setPinModalOpen] = useState(false);
+  const [pinLinking, setPinLinking] = useState(false);
+  const [selectedLocationId, setSelectedLocationId] = useState<string>('');
+  const mapImageRef = useRef<HTMLDivElement>(null);
+
   // Derived state
   const chapters = documents.filter(d => d.item_type === 'chapter').sort((a, b) => a.order_index - b.order_index);
   const getScenes = (chapterId: string) => documents.filter(d => d.parent_id === chapterId).sort((a, b) => a.order_index - b.order_index);
@@ -226,6 +368,7 @@ export default function WriterDashboard() {
     if (user) {
       fetchDocuments();
       fetchStoryElements();
+      fetchWorldMap();
     }
   }, [user]);
 
@@ -600,6 +743,104 @@ export default function WriterDashboard() {
     }
   };
 
+  // Atlas functions
+  const fetchWorldMap = async () => {
+    if (!user) return;
+    const { data: mapData } = await supabase
+      .from('world_maps')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (mapData) {
+      setWorldMap(mapData);
+      // Use signed URL for private bucket
+      const { data: signedData } = await supabase.storage
+        .from('world_maps')
+        .createSignedUrl(mapData.storage_path, 3600);
+      if (signedData) setMapImageUrl(signedData.signedUrl);
+
+      const { data: pins } = await supabase
+        .from('map_pins')
+        .select('*')
+        .eq('map_id', mapData.id)
+        .order('created_at', { ascending: true });
+      if (pins) setMapPins(pins);
+    }
+  };
+
+  const handleMapUpload = async (file: File) => {
+    if (!user) return;
+    setMapUploading(true);
+    const ext = file.name.split('.').pop();
+    const path = `${user.id}/world_map_${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('world_maps')
+      .upload(path, file, { upsert: true });
+
+    if (!uploadError) {
+      // Delete old map record if any
+      if (worldMap) {
+        await supabase.from('world_maps').delete().eq('id', worldMap.id);
+        await supabase.from('map_pins').delete().eq('map_id', worldMap.id);
+        setMapPins([]);
+      }
+      const { data: newMap } = await supabase
+        .from('world_maps')
+        .insert({ user_id: user.id, storage_path: path })
+        .select()
+        .single();
+      if (newMap) {
+        setWorldMap(newMap);
+        const { data: signedData } = await supabase.storage
+          .from('world_maps')
+          .createSignedUrl(path, 3600);
+        if (signedData) setMapImageUrl(signedData.signedUrl);
+      }
+    }
+    setMapUploading(false);
+  };
+
+  const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!worldMap || !mapImageRef.current) return;
+    const rect = mapImageRef.current.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    setPendingPin({ x, y });
+    setSelectedLocationId('');
+    setPinModalOpen(true);
+  };
+
+  const savePin = async () => {
+    if (!pendingPin || !worldMap || !user) return;
+    setPinLinking(true);
+    const locationEl = storyElements.find(el => el.id === selectedLocationId);
+    const { data: pin } = await supabase
+      .from('map_pins')
+      .insert({
+        user_id: user.id,
+        map_id: worldMap.id,
+        story_element_id: selectedLocationId || null,
+        x_pct: pendingPin.x,
+        y_pct: pendingPin.y,
+        label: locationEl?.name ?? null,
+      })
+      .select()
+      .single();
+    if (pin) setMapPins([...mapPins, pin]);
+    setPinModalOpen(false);
+    setPendingPin(null);
+    setPinLinking(false);
+  };
+
+  const deletePin = async (pinId: string) => {
+    await supabase.from('map_pins').delete().eq('id', pinId);
+    setMapPins(mapPins.filter(p => p.id !== pinId));
+  };
+
   const toggleExpandChapter = (chapterId: string) => {
     const newExpanded = new Set(expandedChapters);
     if (newExpanded.has(chapterId)) newExpanded.delete(chapterId);
@@ -649,7 +890,8 @@ export default function WriterDashboard() {
 
   const wordCount = editorContent.trim() ? editorContent.trim().split(/\s+/).length : 0;
 
-  const filteredElements = storyElements.filter(el => el.category === activeTab);
+  const filteredElements = storyElements.filter(el => activeTab !== 'atlas' && el.category === activeTab);
+  const locationElements = storyElements.filter(el => el.category === 'location');
 
   const handleRestoreDraft = () => {
     if (!recoveryDraft) return;
@@ -1046,13 +1288,24 @@ export default function WriterDashboard() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4">
-            {bibleLoading ? (
-              <div className="flex items-center justify-center py-8">
+          <div className="flex-1 overflow-y-auto">
+            {activeTab === 'atlas' ? (
+              <AtlasPanel
+                worldMap={worldMap}
+                mapImageUrl={mapImageUrl}
+                mapUploading={mapUploading}
+                mapPins={mapPins}
+                mapImageRef={mapImageRef}
+                onMapUpload={handleMapUpload}
+                onMapClick={handleMapClick}
+                onDeletePin={deletePin}
+              />
+            ) : bibleLoading ? (
+              <div className="flex items-center justify-center py-8 pt-8">
                 <Loader2 className="w-5 h-5 text-stone-500 animate-spin" />
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-3 p-4">
                 <button
                   onClick={() => setModalOpen(true)}
                   className="w-full flex items-center gap-2 text-stone-400 hover:text-white text-xs py-2 transition-colors"
@@ -1089,7 +1342,7 @@ export default function WriterDashboard() {
                       {activeTab === 'location' && (
                         <div className="flex items-center gap-3 p-3 bg-stone-800/50 hover:bg-stone-800 rounded-xl cursor-pointer transition-colors">
                           <div className="w-10 h-10 bg-stone-700 rounded-lg flex items-center justify-center">
-                            <MapPin className="w-4 h-4 text-stone-400" />
+                            <MapPinIcon className="w-4 h-4 text-stone-400" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-white truncate">{el.name}</p>
@@ -1145,22 +1398,76 @@ export default function WriterDashboard() {
             )}
           </div>
 
-          <div className="p-4 border-t border-stone-800">
-            <p className="text-xs text-stone-500 text-center">
-              Track the elements that make your world consistent and believable.
-            </p>
-          </div>
+          {activeTab !== 'atlas' && (
+            <div className="p-4 border-t border-stone-800">
+              <p className="text-xs text-stone-500 text-center">
+                Track the elements that make your world consistent and believable.
+              </p>
+            </div>
+          )}
         </aside>
       )}
 
       {/* Add Element Modal */}
-      {modalOpen && (
+      {modalOpen && activeTab !== 'atlas' && (
         <AddElementModal
-          category={activeTab}
+          category={activeTab as StoryElementCategory}
           onClose={() => setModalOpen(false)}
           onSave={addStoryElement}
           saving={elementSaving}
         />
+      )}
+
+      {/* Pin Link Modal */}
+      {pinModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-stone-900 border border-stone-700 rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2">
+                <MapPinIcon className="w-4 h-4 text-amber-400" />
+                <h3 className="text-sm font-semibold text-white">Drop a Pin</h3>
+              </div>
+              <button onClick={() => { setPinModalOpen(false); setPendingPin(null); }} className="text-stone-500 hover:text-white transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-stone-500 mb-4">Link this pin to a Location from your Story Bible (optional).</p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-stone-400 mb-1 block">Location</label>
+                <select
+                  value={selectedLocationId}
+                  onChange={e => setSelectedLocationId(e.target.value)}
+                  className="w-full bg-stone-800 border border-stone-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                >
+                  <option value="">— No link (place pin only) —</option>
+                  {locationElements.map(loc => (
+                    <option key={loc.id} value={loc.id}>{loc.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-2 mt-6">
+              <button
+                onClick={() => { setPinModalOpen(false); setPendingPin(null); }}
+                className="flex-1 px-4 py-2 text-xs font-medium text-stone-400 hover:text-white bg-stone-800 hover:bg-stone-700 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={savePin}
+                disabled={pinLinking}
+                className="flex-1 px-4 py-2 text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-stone-950 rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {pinLinking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPinIcon className="w-3.5 h-3.5" />}
+                Place Pin
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Mobile Menu Overlay */}

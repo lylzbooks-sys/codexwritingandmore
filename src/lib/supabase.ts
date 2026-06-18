@@ -41,3 +41,22 @@ export interface StoryElement {
   created_at: string;
   updated_at: string;
 }
+
+export interface WorldMap {
+  id: string;
+  user_id: string;
+  storage_path: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MapPin {
+  id: string;
+  user_id: string;
+  map_id: string;
+  story_element_id: string | null;
+  x_pct: number;
+  y_pct: number;
+  label: string | null;
+  created_at: string;
+}
